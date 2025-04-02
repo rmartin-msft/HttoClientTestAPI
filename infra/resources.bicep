@@ -13,6 +13,10 @@ param principalId string
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = uniqueString(subscription().id, resourceGroup().id, location)
 
+@secure()
+@description('The password for the jumpbox VM admin user')
+param adminPassword string
+
 module virtualNet './modules/createnetwork.bicep' = {
   name: 'internal-network'
   params: {    
@@ -130,5 +134,16 @@ module weatherFunctionApp 'br/public:avm/res/app/container-app:0.8.0' = {
     tags: union(tags, { 'azd-service-name': 'weather-function-app' })
   }
 }
+
+module jumpboxModule './jumpbox.bicep' = {
+  name: 'jumpboxDeployment'
+ 
+  params: { 
+    jumpboxVmSubnetId: virtualNet.outputs.defaultSubnetId
+    adminUserName: 'robert'
+    adminPassword: adminPassword
+  }
+}
+
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.outputs.loginServer
 output AZURE_RESOURCE_WEATHER_FUNCTION_APP_ID string = weatherFunctionApp.outputs.resourceId

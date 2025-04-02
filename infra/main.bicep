@@ -14,6 +14,10 @@ param weatherFunctionAppExists bool
 @description('Id of the user or app to assign application roles')
 param principalId string
 
+@secure()
+@description('The password for the jumpbox VM admin user')
+param adminPassword string
+
 // Tags that should be applied to all resources.
 // 
 // Note that 'azd-service-name' tags should be applied separately to service host resources.
@@ -38,8 +42,12 @@ module resources 'resources.bicep' = {
     tags: tags
     principalId: principalId
     weatherFunctionAppExists: weatherFunctionAppExists
+    adminPassword: adminPassword
   }
 }
+
+
+
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.AZURE_CONTAINER_REGISTRY_ENDPOINT
 output AZURE_RESOURCE_WEATHER_FUNCTION_APP_ID string = resources.outputs.AZURE_RESOURCE_WEATHER_FUNCTION_APP_ID
