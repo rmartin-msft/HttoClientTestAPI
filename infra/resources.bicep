@@ -13,6 +13,14 @@ param principalId string
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = uniqueString(subscription().id, resourceGroup().id, location)
 
+module virtualNet './modules/createnetwork.bicep' = {
+  name: 'internal-network'
+  params: {    
+    resourceToken: resourceToken    
+  }
+}
+
+
 // Monitor application with Azure Monitor
 module monitoring 'br/public:avm/ptn/azd/monitoring:0.1.0' = {
   name: 'monitoring'
@@ -50,7 +58,9 @@ module containerAppsEnvironment 'br/public:avm/res/app/managed-environment:0.4.5
     logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId
     name: '${abbrs.appManagedEnvironments}${resourceToken}'
     location: location
-    zoneRedundant: false
+    zoneRedundant: false    
+    internal: true
+    infrastructureSubnetId: virtualNet.outputs.subnetId
   }
 }
 
