@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using WeatherFunctionApp;
 using Nasa.Neo;
+using Microsoft.Extensions.Primitives;
 
 public class MyServiceRequest
 {
@@ -13,6 +14,7 @@ public class MyServiceRequest
 public class MyServiceResponse
 {
   public string? Response { get; set; }
+  public string? NeoResponse { get; set; }
 }
 
 public interface IMyService
@@ -44,28 +46,61 @@ public class MyService : IMyService, IDisposable
   {
     _logger.LogInformation("Called MyServiceMethodAsync with request: {Request}", request.Request);
 
-    using (var nasa = await _httpClient.GetAsync(""))
+    string neoResponseString = string.Empty;
+
+    try
     {
-      _logger.LogInformation("NASA response: {Response}", nasa.StatusCode);
+      using (var nasa = await _httpClient.GetAsync(""))
+      {
+        _logger.LogInformation("NASA response: {Response}", nasa.StatusCode);
 
-      nasa.EnsureSuccessStatusCode();
+        nasa.EnsureSuccessStatusCode();
 
-      var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
 
-      //var json = await nasa.Content.ReadAsStringAsync();
-      //var data = JsonSerializer.Deserialize<NeoResponse>(json);
+        //var json = await nasa.Content.ReadAsStringAsync();
+        //var data = JsonSerializer.Deserialize<NeoResponse>(json);
 
-      var stream = await nasa.Content.ReadAsStreamAsync();
-      var data = await JsonSerializer.DeserializeAsync<NeoResponse>(stream);
+        var stream = await nasa.Content.ReadAsStreamAsync();
+        var data = await JsonSerializer.DeserializeAsync<NeoResponse>(stream);
 
-      //_logger.LogInformation("NASA response: {Response} Objects", data);
+        if (data == null)
+        {
+          _logger.LogError("NASA response is null");
+          throw new Exception("NASA response is null");
+        }
+        if (data.NearEarthObjects == null || data.NearEarthObjects.Count == 0)
+        {
+          _logger.LogError("NASA response has no NearEarthObjects");
+          throw new Exception("NASA response has no NearEarthObjects");
+        } 
 
-      _logger.LogInformation("NASA response: {Response} Objects", data.NearEarthObjects.Count);
+        neoResponseString = $"NASA response: {data.NearEarthObjects.Count} objects";  
 
+        _logger.LogInformation("NASA response: {Response}", neoResponseString);
+
+      }
+
+      return await Task.FromResult(new MyServiceResponse() { 
+        Response = "Hello from MyService", NeoResponse= neoResponseString
+      });
     }
-
-    return await Task.FromResult(new MyServiceResponse() { Response = "Hello from MyService" });
+    catch (HttpIOException ex)
+    {
+      _logger.LogError(ex, "Error in MyServiceMethodAsync: {Message}", ex.Message);
+      throw;
+    }
+    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+      _logger.LogError(ex, "Error NASA Service cannot be reached in MyServiceMethodAsync: {Message}", ex.Message);
+      throw;
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Unexpected Error in MyServiceMethodAsync: {Message}", ex.Message);
+      throw;
+    }
   }
 
 }

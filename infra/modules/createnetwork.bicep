@@ -83,5 +83,6 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-09-01' = {
 output defaultSubnetId string = virtualNetwork.properties.subnets[0].id
 output subnetId string = virtualNetwork.properties.subnets[1].id
 output gatewaySubnetId string = virtualNetwork.properties.subnets[2].id
+output privateLinkSubnetId string = virtualNetwork.properties.subnets[3].id
 output gatewayPip string = gatewayPip.id
 output virtualNetworkId string = virtualNetwork.id

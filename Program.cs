@@ -7,10 +7,17 @@ var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
     .ConfigureLogging( config => {
       config.ClearProviders();
-      config.AddSimpleConsole(c => {
+      config.AddSimpleConsole(c =>
+      {
         c.SingleLine = true;
         c.ColorBehavior = Microsoft.Extensions.Logging.Console.LoggerColorBehavior.Default;
-        }); 
+      });
+      config.AddJsonConsole(c =>
+      {
+        c.IncludeScopes = true;
+        c.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff zzz";
+        c.UseUtcTimestamp = true;        
+      });
     })
     .ConfigureServices(services =>
     {      

@@ -42,9 +42,15 @@ namespace WeatherFunctionApp
                 Random.Shared.Next(-20, 55),
                 summaries[Random.Shared.Next(summaries.Length)]
             ))
-            .ToArray();
+            .ToArray();            
 
-        return new OkObjectResult(forecast);
+        var asteriodWeatherForecast = new AsteriodWeatherForecast
+        {
+          NeoResponse = $"{response.Response} items {response.NeoResponse}", 
+          WeatherForecasts = forecast
+        };
+
+        return new OkObjectResult(asteriodWeatherForecast);
       }
       catch (Exception ex)
       {
@@ -58,4 +64,11 @@ namespace WeatherFunctionApp
   {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
   }
+
+  class AsteriodWeatherForecast
+  {
+    public string? NeoResponse { get; set; }    
+    public WeatherForecast[]? WeatherForecasts { get; set; }
+  }
+  
 }
