@@ -50,9 +50,10 @@ public class MyService : IMyService, IDisposable
 
     try
     {
+      _logger.LogInformation("Calling NASA API...");
       using (var nasa = await _httpClient.GetAsync(""))
       {
-        _logger.LogInformation("NASA response: {Response}", nasa.StatusCode);
+        _logger.LogInformation("NASA API: {Response} {ResponseCode}", nasa.StatusCode, (int)nasa.StatusCode);
 
         nasa.EnsureSuccessStatusCode();
 
@@ -76,9 +77,9 @@ public class MyService : IMyService, IDisposable
           throw new Exception("NASA response has no NearEarthObjects");
         } 
 
-        neoResponseString = $"NASA response: {data.NearEarthObjects.Count} objects";  
+        neoResponseString = $"NASA detected: {data.NearEarthObjects.Count} NEO objects";  
 
-        _logger.LogInformation("NASA response: {Response}", neoResponseString);
+        _logger.LogInformation("NASA MyService Reply: {Response}", neoResponseString);
 
       }
 
