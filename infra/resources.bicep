@@ -17,6 +17,8 @@ var resourceToken = uniqueString(subscription().id, resourceGroup().id, location
 @description('The password for the jumpbox VM admin user')
 param adminPassword string
 
+param privateEndpoints_privatelink_name string = 'PRIVATELINK'
+
 module virtualNet './modules/createnetwork.bicep' = {
   name: 'internal-network'
   params: {    
@@ -56,7 +58,7 @@ module containerRegistry 'br/public:avm/res/container-registry/registry:0.1.1' =
 }
 
 // Container apps environment
-module containerAppsEnvironment 'br/public:avm/res/app/managed-environment:0.4.5' = {
+module containerAppsEnvironment 'br/public:avm/res/app/managed-environment:0.5.1' = {
   name: 'container-apps-environment'
   params: {
     logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId
@@ -64,7 +66,15 @@ module containerAppsEnvironment 'br/public:avm/res/app/managed-environment:0.4.5
     location: location
     zoneRedundant: false    
     internal: true
-    infrastructureSubnetId: virtualNet.outputs.subnetId
+    infrastructureSubnetId: virtualNet.outputs.subnetId 
+    workloadProfiles: [
+      {
+        maximumCount: 3
+        minimumCount: 0
+        name: 'profile01'
+        workloadProfileType: 'D4'
+      }
+    ]
   }
 }
 
@@ -135,6 +145,158 @@ module weatherFunctionApp 'br/public:avm/res/app/container-app:0.8.0' = {
   }
 }
 
+resource applicationGateway 'Microsoft.Network/applicationGateways@2020-11-01' = {
+    name: 'weather-gateway'
+    location: location    
+    properties: {
+        sku: {
+            name: 'Standard_v2'
+            tier: 'Standard_v2'
+            capacity: 2
+        }       
+        gatewayIPConfigurations: [
+            {
+                name: 'appGatewayIpConfig'
+                properties: {
+                    subnet: {
+                        id: virtualNet.outputs.gatewaySubnetId
+                    }
+                }
+            }
+        ]
+        frontendIPConfigurations: [
+            {
+                name: 'appGatewayFrontendIP'
+                properties: {
+                    publicIPAddress: {
+                        id: virtualNet.outputs.gatewayPip
+                    }
+                }
+            }
+        ]
+        frontendPorts: [
+            {
+                name: 'appGatewayFrontendPort'
+                properties: {
+                    port: 80
+                }
+            }
+        ]
+        backendAddressPools: [
+            {
+                name: 'appGatewayBackendPool'
+                properties: { 
+                    backendAddresses: [
+                        {
+                            fqdn: weatherFunctionApp.outputs.fqdn
+                        }                        
+                    ]
+                }
+            }
+        ]
+        backendHttpSettingsCollection: [
+            {
+                name: 'appGatewayBackendHttpSettings'
+                properties: {
+                    port: 80
+                    protocol: 'Http'
+                    cookieBasedAffinity: 'Disabled'
+                    requestTimeout: 20
+                    pickHostNameFromBackendAddress: true // Use the host header from the backend target
+                }
+            }
+        ]
+        httpListeners: [
+            {
+                name: 'appGatewayHttpListener'
+                properties: {
+                    frontendIPConfiguration: {
+                        id: resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', 'weather-gateway', 'appGatewayFrontendIP')
+                    }
+                    frontendPort: {
+                        id: resourceId('Microsoft.Network/applicationGateways/frontendPorts', 'weather-gateway', 'appGatewayFrontendPort')
+                    }
+                    protocol: 'Http'
+                }
+            }
+        ]
+        requestRoutingRules: [
+            {
+                name: 'appGatewayRoutingRule'
+                properties: {
+                    ruleType: 'Basic'
+                    httpListener: {
+                        id: resourceId('Microsoft.Network/applicationGateways/httpListeners', 'weather-gateway', 'appGatewayHttpListener')
+                    }
+                    backendAddressPool: {
+                        id: resourceId('Microsoft.Network/applicationGateways/backendAddressPools', 'weather-gateway', 'appGatewayBackendPool')
+                    }
+                    backendHttpSettings: {
+                        id: resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', 'weather-gateway', 'appGatewayBackendHttpSettings')
+                    }
+                }
+            }
+        ]
+    }
+}
+
+resource dnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+  name: 'privatelink.${location}.azurecontainerapps.io'
+  location: 'global'
+  properties: {
+  }
+}
+
+resource privateLinksZone 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+  parent: dnsZone
+  name: '4aeb9b18b0f36'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    resolutionPolicy: 'Default'
+    virtualNetwork: {
+      id: virtualNet.outputs.virtualNetworkId
+    }
+  }
+}
+
+resource privateLink 'Microsoft.Network/privateEndpoints@2024-05-01' = {
+  name: privateEndpoints_privatelink_name
+  location: location
+  properties: {
+    privateLinkServiceConnections: [
+      {
+        name: 'privatelink-uksouth-azurecontainerapps-io'
+        properties: {
+          privateLinkServiceId: containerAppsEnvironment.outputs.resourceId
+          groupIds: [
+            'managedEnvironments'
+          ]
+          requestMessage: 'Please approve this connection.'
+        }
+      }
+    ]
+    subnet: {
+      id: virtualNet.outputs.privateLinkSubnetId
+    }
+  }
+}
+
+resource privateEndpoints_privatelink_default 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
+  parent: privateLink
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'privatelink-uksouth-azurecontainerapps-io'
+        properties: {
+          privateDnsZoneId: dnsZone.id
+        }
+      }
+    ]
+  }  
+}
+
 module jumpboxModule './jumpbox.bicep' = {
   name: 'jumpboxDeployment'
  
@@ -147,3 +309,5 @@ module jumpboxModule './jumpbox.bicep' = {
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.outputs.loginServer
 output AZURE_RESOURCE_WEATHER_FUNCTION_APP_ID string = weatherFunctionApp.outputs.resourceId
+// output defaultDomain string = containerAppsEnvironment.outpproperties.defaultDomain
+// output containerAppStaticIp string = containerAppsEnvironment.properties.staticIp
